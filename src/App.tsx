@@ -21,14 +21,14 @@ function App() {
         if(param.split("=")[0].includes("access_token")) {
           setToken(param.split("=")[1])
           localStorage.setItem("access_token", param.split("=")[1])
-          window.location.href = "http://localhost:3000"
+          window.location.href = "https://alexandreblanchet.github.io/custom-skills-manager"
         }
       })
       
       return
     }
     if(!token) {
-      window.location.href = 'https://login.mypurecloud.de/oauth/authorize?response_type=token&client_id=d7fcb9e0-08c6-458e-9559-481ba326c996&redirect_uri=http%3A%2F%2Flocalhost%3A3000/';
+      window.location.href = 'https://login.mypurecloud.de/oauth/authorize?response_type=token&client_id=d7fcb9e0-08c6-458e-9559-481ba326c996&redirect_uri=https%3A%2F%2Falexandreblanchet.github.io%2Fcustom-skills-manager%2F';
     }
   }, [])
 
