@@ -12,6 +12,7 @@ function App() {
   const location = useLocation();
   const [token, setToken] = React.useState(localStorage.getItem("access_token"))
   const [groups, setGroups] = React.useState([])
+  const [queues, setQueues] = React.useState([])
   const [skills, setSkills] = React.useState([])
   const [members, setMembers] = React.useState<any>([])
 
@@ -22,6 +23,7 @@ function App() {
           setToken(param.split("=")[1])
           localStorage.setItem("access_token", param.split("=")[1])
           window.location.href = "https://alexandreblanchet.github.io/custom-skills-manager"
+          //window.location.href = "http://localhost:3000"
         }
       })
       
@@ -29,24 +31,37 @@ function App() {
     }
     if(!token) {
       window.location.href = 'https://login.mypurecloud.de/oauth/authorize?response_type=token&client_id=d7fcb9e0-08c6-458e-9559-481ba326c996&redirect_uri=https%3A%2F%2Falexandreblanchet.github.io%2Fcustom-skills-manager%2F';
+     // window.location.href = 'https://login.mypurecloud.de/oauth/authorize?response_type=token&client_id=d7fcb9e0-08c6-458e-9559-481ba326c996&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2F';
     }
   }, [])
 
 
   React.useEffect(() => {
+    if(!token) {
+      return
+    }
     axios.get(`https://api.mypurecloud.de/api/v2/groups`, { headers: {"Authorization" : `Bearer ${token}`} })
     .then(result => {
-      console.log(result)
       setGroups(result.data.entities)
     })
     .catch(error => {
       console.error(error);
+      localStorage.setItem("access_token",'')
     });
 
     axios.get(`https://api.mypurecloud.de/api/v2/routing/skills`, { headers: {"Authorization" : `Bearer ${token}`} })
     .then(result => {
-      console.log(result)
       setSkills(result.data.entities)
+    })
+    .catch(error => {
+      console.error(error);
+      localStorage.setItem("access_token",'')
+    });
+
+    axios.get(`https://api.mypurecloud.de/api/v2/routing/queues`, { headers: {"Authorization" : `Bearer ${token}`} })
+    .then(result => {
+      setQueues(result.data.entities)
+      localStorage.setItem("access_token",'')
     })
     .catch(error => {
       console.error(error);
@@ -55,11 +70,31 @@ function App() {
   }, [])
 
   const getGroupMembers = (groupId : string) => {
-    console.log('get members')
     axios.get(`https://api.mypurecloud.de/api/v2/groups/${groupId}/members?expand=skills`, { headers: {"Authorization" : `Bearer ${token}`} })
     .then(result => {
-      console.log(result)
       setMembers(result.data.entities)
+    })
+    .catch(error => {
+      console.error(error);
+    });
+  }
+
+  const getQueueMembers = (queueId : string) => {
+    axios.get(`https://api.mypurecloud.de/api/v2/routing/queues/${queueId}/members?expand=skills`, { headers: {"Authorization" : `Bearer ${token}`} })
+    .then(result => {
+      setMembers([...result.data.entities.map((result: any) => result.user)])
+    })
+    .catch(error => {
+      console.error(error);
+    });
+  }
+
+  
+  const updateGroupMember = (userId : string, skills: any) => {
+    axios.put(`https://api.mypurecloud.de/api/v2/users/${userId}/routingskills/bulk`, skills,
+      { headers: {"Authorization" : `Bearer ${token}`} })
+    .then(result => {
+      console.log(result)
     })
     .catch(error => {
       console.error(error);
@@ -83,10 +118,18 @@ function App() {
         onChange={(_, selected: any) => selected ?  getGroupMembers(selected.id) : setMembers([])}
         options={groups}
         sx={{ width: 300 }}
-      /></Box>
+      /><Autocomplete
+      placeholder="Queues"
+      size='sm'
+      getOptionLabel={(option) => option.name}
+      isOptionEqualToValue={(option: any, value: any) => option.id == value.id}
+      onChange={(_, selected: any) => selected ?  getQueueMembers(selected.id) : setMembers([])}
+      options={queues}
+      sx={{ width: 300 }}
+    /></Box>
       <Divider sx={{my: 1, mx: -2}}/>
       <Box sx={{ display: 'flex', gap: 1  , p:1, flexDirection: 'column' }}>
-        {members.map((member: any) => <Card sx={{p:1}}><Box sx={{ display: 'flex', gap: 2,  }} justifyContent="space-between" alignItems='center'>
+        {members.map((member: any) => <Card key={member.id}  sx={{p:1}}><Box sx={{ display: 'flex', gap: 2,  }} justifyContent="space-between" alignItems='center'>
           <Typography level='title-sm'>{member.name}</Typography>
           <Autocomplete
             placeholder="Ajouter une compétence"
@@ -94,9 +137,10 @@ function App() {
             getOptionLabel={(option) => option.name}
             isOptionEqualToValue={(option: any, value: any) => option.id == value.id}
             onChange={(e, selected: any) => {
-              e.preventDefault()
+              
               selected && setMembers([...members.filter((skll: any) => skll.id != selected.id).map((mbr: any) => {
-              if(mbr.id == member.id) {
+              if(mbr.skills && mbr.id == member.id) {
+                updateGroupMember(member.id, [...mbr.skills, {...selected, proficiency: 0}])
                 return {...mbr, skills: [...mbr.skills, selected]}
               }
               return mbr
@@ -107,15 +151,16 @@ function App() {
           <Box />
        </Box>
        <Divider/>
-       {member.skills.sort((a: any,b: any) => (a.name > b.name) ? 1 : ((b.name > a.name) ? -1 : 0)).map((skill: any) => 
-       <Box sx={{ display: 'flex', gap: 2,  }} justifyContent="space-between" alignItems='center'>
-        <Typography sx={{width: 600}}>{skill.name}</Typography>
+       {member.skills && member.skills.sort((a: any,b: any) => (a.name > b.name) ? 1 : ((b.name > a.name) ? -1 : 0)).map((skill: any) => 
+       <Box key={skill.id} sx={{ display: 'flex', gap: 2,  }} justifyContent="space-between" alignItems='center'>
+        <Typography sx={{width: 500}} level='body-sm'>{skill.name}</Typography>
         <Rating
           size='small'
           name="simple-controlled"
           onChange={(_, value) => {
             setMembers([...members.map((mbr: any) => {
               if(mbr.id == member.id) {
+                updateGroupMember(member.id, [...mbr.skills.filter((skll: any) => skll.id != skill.id), {...skill, proficiency: value}])
                 return {...mbr, skills: [...mbr.skills.filter((skll: any) => skll.id != skill.id), {...skill, proficiency: value}]}
               }
               return mbr
@@ -126,6 +171,7 @@ function App() {
         <IconButton aria-label="delete" color='danger' variant='plain' size='sm' onClick={() => {
           setMembers([...members.map((mbr: any) => {
             if(mbr.id == member.id) {
+              updateGroupMember(member.id, [...mbr.skills.filter((skll: any) => skll.id != skill.id)])
               return {...mbr, skills: [...mbr.skills.filter((skll: any) => skll.id != skill.id)]}
             }
             return mbr
